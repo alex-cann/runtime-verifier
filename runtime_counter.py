@@ -1,17 +1,21 @@
 import re
-from enum import Enum
 from math import log2,log
-
+import random
 #represent runtime as a dictionary
 
 
-# features:
-# Should be able to determine what is happening if function is called a lot
-# Should be easy to specify runtime
-# give an input generator -> generate from hints
+#TODO
+# 1) use runtimes from children(not the recursive ones) when calculating recursive runtime
+# 2) Build testing aparatus (compare a_runtime to t_runtime)
+# 3) Allow for more complicated runtimes
+# 4) Smarter output calculation(n(n) -> n^2)
+# 5) Make defaults more general (x^n instead of 2^n and 3^n only)
+# 6) Make the output prettier
+# 7) Make how the input size is selected smarter
 
-# specify runtime at this level/ total runtime of top level call / input size
-#
+
+
+
 #defaults to try for suggesting alternatives
 
 default_runtimes = {
@@ -19,28 +23,16 @@ default_runtimes = {
                        "log(n)": log2,
                        "sqrt(n)":lambda x:x**(1/2),
                        "nlog(n)": lambda x:x*log2(x),
+                        "n": lambda x:x,
                        "n^2": lambda x:x**2,
                        "2^n": lambda x: 2**x,
                        "3^n": lambda x: 3**x
 }
 
-
+#take in a function that generates inputs and create an input for testing
 def get_random_input(generator,size):
     return [generator() for x in range(size)]
 
-
-def test_runtime(sizes,func):
-    expected = map(f,sizes)
-
-    return list(expected)
-
-def test_runtimes(r_tree):
-    sizes=[5,10,20]
-    #store the differences for all the tests
-    diffs = {x:[0,0,0] for x,y in default_runtimes}
-    diffs[r_tree.get_condensed_runtime()] = test_runtimes(sizes,r_tree.test_runtime)
-    for time,func in diffs:
-        test_runtimes(sizes,func)
 
 #master theorem for recursion
 def master_theorem(a,b,c=0,k=0):
@@ -83,28 +75,36 @@ class RuntimeTree:
         compare the theoretical runtime vs the number of steps the program actually took
         :return:
         '''
+
     #calculates the theoretical runtime
     def get_t_runtime(self):
         #handle the recursive part
         if self.recursive:
-            recursed_childs = list(filter(lambda x: x.f_name == self.f_name,self.children))
+            recursed_childs = list(filter(lambda x: x.f_name == self.f_name, self.children))
+            other_childs = list(filter(lambda x: not x.f_name == self.f_name, self.children))
+            #TODO make this a function and less jank
+            tester = lambda x: default_runtimes[x.t_value](20)
+            #uses the largest runtime between this and the children as the per level runtime
+            total_t = max(other_childs, key=tester)
+            total_t = max(total_t, self, key=tester).t_value
             #no splitting
             if len(recursed_childs) == 1:
                 a = self.get_max_depth()
                 if recursed_childs[0].a_value == self.a_value - 1:
-                    return "n" + self.t_value
+                    #TODO this might be incorrect now
+                    return "n(" + total_t + ")"
                 else:
-                    return self.t_value + "log(n)"
+                    return total_t + "(log(n))"
             else:
                 a = len(recursed_childs)
                 b = self._get_max_child_ratio()
-                k = re.search("log\(n\)\^[1-9],",self.t_value)
+                k = re.search("log\(n\)\^[1-9],", total_t)
                 if k is None:
                     k=0
                 else:
                     k=int(k.string[-1])
-                c = re.search("n\^[1-9]",self.t_value)
-                c_2 = re.search("sqrt\(n\)",self.t_value)
+                c = re.search("n\^[1-9]", total_t)
+                c_2 = re.search("sqrt\(n\)", total_t)
                 if c is None:
                     if c_2 is not None:
                         c=1/2
@@ -169,18 +169,48 @@ def runtime(expected,recursive=False):
             return wrapper
     return count_runtime
 
+#TODO setup tests to compare predicted runtime to actual runtime
+def test_runtime(sizes,func):
+    expected = map(f,sizes)
+    return list(expected)
+
+def test_runtimes(func,gen):
+    sizes=[5,10,20]
+    global TIME_COUNTER
+    outcomes = []
+    #store the differences for all the tests
+    for size in sizes:
+        TIME_COUNTER=RuntimeTree()
+        func(get_random_input(gen,size))
+        outcomes.append(TIME_COUNTER.get_a_runtime() / size)
+        #TODO compare the outcomes to the result of interpreting the theoretical value
+    print(outcomes)
+
+
+
+
+@runtime("n")
+def merge(left, right):
+    result=[]
+    while not left == [] and not right == []:
+        if left[0] < right[0]:
+            result.append(left.pop(0))
+        else:
+            result.append(right.pop(0))
+    # one of these must be empty so it's safe to add
+    return result + left + right
 
 @runtime("1",recursive=True)
-def sum_list(inpt=None):
-    x = len(inpt)
-    if(len(inpt) == 1):
-        return inpt[0]
-    else:
-        return sum_list(inpt[len(inpt)//2:]) + sum_list(inpt[:len(inpt)//2])
+def merge_sort(arr):
+    if len(arr) == 1:
+        return arr
+    mid = len(arr)//2
+    left = arr[:mid]
+    right = arr[mid:]
+    left = merge_sort(left)
+    right = merge_sort(right)
+    return merge(left, right)
 
 
-
-
-sum_list([1,2,3,4,5,6])
-print(TIME_COUNTER.get_t_runtime())
-print(TIME_COUNTER.get_a_runtime())
+gen = lambda : random.randint(1, 100)
+test_runtimes(merge_sort,gen)
