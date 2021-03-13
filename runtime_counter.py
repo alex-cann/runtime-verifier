@@ -7,9 +7,7 @@ from tracking import *
 
 #TODO
 # 3) Allow for more complicated runtimes
-# 4) Smarter output calculation(n(n) -> n^2)
-# 5) Make defaults more general (x^n instead of 2^n and 3^n only)
-# 6) Make smart parser for runtimes
+# 4) Smarter output calculation(n(n) -> n^2) (Done except for cleaner)
 # 7) Make the random input generator smarter
 # 8) Add runtimes to builtin functions
 # 9) Track what transformations have been applied to the input to figure out when something of size O(n) is being used
@@ -17,30 +15,62 @@ from tracking import *
 # 11) Fix bug where if params are not passed it loses it's mind
 
 #defaults to try for suggesting alternatives
-
-default_runtimes = {
-                        "1":lambda x: 1,
-                       "log(n)": log2,
-                       "sqrt(n)":lambda x: x**(1/2),
-                       "n(log(n))": lambda x: x*log2(x),
-                        "n": lambda x:x,
-                       "n^2": lambda x:x**2,
-                       "2^n": lambda x: 2**x,
-                       "3^n": lambda x: 3**x
+#leaf equations
+#x is to be left until the very end
+base_equations = {
+    "([0-9])": lambda x,y: int(y),
+    "n": lambda x: x,
+}
+#binary/unary functions
+r_time_functions = {
+                       "log\((.+)\)": lambda x,y :log2(y(x)),
+                       "sqrt\((.+)\)": lambda x,y: y(x) ** (1/2),
+                       "([^tg(]+)\((.+)\)": lambda x,y,z: y(x) * z(x),
+                       "([0-9]*)\^n": lambda x,y: y(x)**x,
+                       "([^0-9]+)\^([0-9])": lambda x,y,z: z(x)**y(x),
+                       "(.+)\+(.+)": lambda x,y,z: y(x) + z(x)
 }
 
 
+#think about converting this to a full blown tokenizer... maybe?
 def parse_runtime(r_str):
-    pass
+    # test if this is a leaf
+    for x,func in base_equations.items():
+        test = re.fullmatch(x,r_str)
+        if not test:
+            continue
+        arg_count = func.__code__.co_argcount
+        if arg_count > 1:
+            #these are concrete values
+            args = test.group(*list(range(1, arg_count)))
+            return lambda x: func(x, *args)
+        else:
+            return lambda x: func(x)
+
+    for x, func in r_time_functions.items():
+        test = re.fullmatch(x, r_str)
+        # skip nonmatching value
+        if not test:
+            continue
+        arg_count = func.__code__.co_argcount
+        if arg_count > 1:
+            #on the other hand these are all going to be functions
+            args = list(map(parse_runtime, test.group(*list(range(1, arg_count)))))
+            return lambda x: func(x, *args)
+        else:
+            return lambda x: func(x)
+    print(r_str)
 
 #take in a function that generates inputs and create an input for testing
 def get_random_input(generator,size):
     return list(generator() for x in range(size))
 
+#makes things more presentable
+#TODO make this less silly
 def cleanup(formula):
     #replace x^0 with 1
     x=re.sub("n\^0","1",formula)
-    x = re.sub("(log(n))\^0","1",x)
+    x = re.sub("\(log\(n\)\)\^0","1",x)
     # replace x^1 with x
     x = re.sub("[+\^]+1", "", x)
     #get rid of any 1's
@@ -58,15 +88,14 @@ def master_theorem(a,b,c=0,k=0):
     c_crit = log(a, b)
     if int(c_crit) == c_crit:
         c_crit = int(c_crit)
-
     if c < c_crit:
         return "n^" + str(c_crit)
     elif c==c_crit:
-        return "n^" + str(c_crit) + "(log(n))^" + str(k+1)
+        return "n^" + str(c_crit) + "(log(n)^" + str(k+1) + ")"
     elif c > c_crit:
         output = "n^" + str(c)
         if k > 0:
-            output+= "(log(n))^" + str(k)
+            output+= "(log(n)^" + str(k) + ")"
         return output
 
 def a_master_theorem(n,a,b,c=0,k=0):
@@ -112,7 +141,8 @@ class RuntimeTree:
         if self.recursive:
             recursed_childs = list(filter(lambda x: x.f_name == self.f_name, self.children))
             other_childs = list(filter(lambda x: not x.f_name == self.f_name, self.children))
-            tester = lambda x: default_runtimes[x.t_value](20)
+            #TODO make this less aproximate and more smart
+            tester = lambda x: parse_runtime(x.t_value)(20)
             #uses the largest runtime between this and the children as the per level runtime
             if len(other_childs) > 0:
                 total_t = max(other_childs, key=tester)
@@ -164,9 +194,9 @@ class RuntimeTree:
     def get_a_runtime(self):
         if len(self.children) > 0:
             children_runtimes = map(RuntimeTree.get_a_runtime, self.children)
-            return default_runtimes[self.t_value](self.a_value) + sum(children_runtimes)
+            return parse_runtime(self.t_value)(self.a_value) + sum(children_runtimes)
         else:
-            return default_runtimes[self.t_value](self.a_value)
+            return parse_runtime(self.t_value)(self.a_value)
 
     def _get_max_child_ratio(self):
         #TODO make sure it's okay to round down here
@@ -257,7 +287,7 @@ def test_runtimes(func, gen):
         func(get_random_input(gen, size))
         #TODO make this not break if the input isn't one of the default runtimes
         r_time = cleanup(TIME_COUNTER.get_t_runtime())
-        f = default_runtimes[r_time]
+        f = parse_runtime(TIME_COUNTER.get_t_runtime())
         outcomes.append(TIME_COUNTER.get_a_runtime() / f(size))
     #TODO
     print(cleanup(TIME_COUNTER.get_t_runtime()))
