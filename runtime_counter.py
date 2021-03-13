@@ -1,6 +1,7 @@
 import re
 from math import log2,log
 import random
+from tracking import *
 #represent runtime as a dictionary
 
 
@@ -13,7 +14,7 @@ import random
 # 8) Add runtimes to builtin functions
 # 9) Track what transformations have been applied to the input to figure out when something of size O(n) is being used
 # 10) Add some fancy number crunchers once 9 is done (1 + 1/2 + 1/4 + ... =2) for example
-
+# 11) Fix bug where if params are not passed it loses it's mind
 
 #defaults to try for suggesting alternatives
 
@@ -34,7 +35,7 @@ def parse_runtime(r_str):
 
 #take in a function that generates inputs and create an input for testing
 def get_random_input(generator,size):
-    return [generator() for x in range(size)]
+    return list(generator() for x in range(size))
 
 def cleanup(formula):
     #replace x^0 with 1
@@ -48,6 +49,7 @@ def cleanup(formula):
     while len(x) > 0 and x[0] == "(":
         x = re.sub("^\(", "", x)
         x = re.sub("\)$", "", x)
+    x = re.sub("^[+]", "", x)
     return x if x else "1"
 
 #master theorem for recursion
@@ -151,10 +153,13 @@ class RuntimeTree:
                     c = 1/2
                 return master_theorem(a, b, c, k)
         else:
-            if len(self.children) > 0:
+            if len(self.children) > 1:
                 return self.t_value + "(" + "+".join(map(RuntimeTree.get_t_runtime, self.children)) + ")"
+            elif len(self.children) == 1:
+                return self.t_value + "(" + self.children[0].get_t_runtime() + ")"
             else:
                 return self.t_value
+
 
     def get_a_runtime(self):
         if len(self.children) > 0:
@@ -194,31 +199,52 @@ class RuntimeTree:
 
 TIME_COUNTER = RuntimeTree()
 
-def runtime(expected="1",recursive=False,inputs=None):
+
+def runtime(expected="1", recursive=False, inputs=None, leaf=False):
     def count_runtime(func):
-            def wrapper(*args,**kwargs):
-                #adds in the gubbins to the tree
-                global TIME_COUNTER
-                #just add up all the inputs
-                if inputs == "ALL":
-                    input_value = args[0]
-                    for x in args[1:]:
-                        input_value += x
-                #a list of values to use was supplied
-                elif hasattr(inputs, "__iter__"):
-                    input_value = args[inputs[0]]
-                    for index in inputs[1:]:
-                        input_value += args[index]
-                #a function was supplied
-                elif callable(inputs):
-                    input_value = inputs(*args)
+        def wrapper(*args,**kwargs):
+            nonlocal expected
+            args = list(args)
+            #adds in the gubbins to the tree
+            global TIME_COUNTER
+            #just add up all the inputs
+            if inputs == "ALL":
+                input_value = args[0]
+                for x in args[1:]:
+                    input_value = input_value + x
+                for x in args:
+                    x = tag(x)
+            #O(whatever) if supplied O(1) otherwise
+            elif inputs == "TAGGED":
+                tagged_inputs = list(filter(is_tagged, args))
+                if len(tagged_inputs) > 0:
+                    input_value=tagged_inputs[0]
+                    for input in tagged_inputs[1:]:
+                        input_value+=input
                 else:
-                    input_value = args[0]
-                TIME_COUNTER = TIME_COUNTER.push(expected, input_value, func.__name__, recursive)
+                    expected="1"
+                    input_value=1
+            #a list of values to use was supplied
+            elif hasattr(inputs, "__iter__"):
+                input_value = args[inputs[0]]
+                args[inputs[0]] = tag(args[inputs[0]])
+                for index in inputs[1:]:
+                    input_value += args[index]
+                    args[index] = tag(args[index])
+            #a function was supplied should be taggable
+            elif callable(inputs):
+                input_value = inputs(*args)
+            else:
+                args[0] = tag(args[0])
+                input_value = args[0]
+            TIME_COUNTER = TIME_COUNTER.push(expected, input_value, func.__name__, recursive)
+            if not leaf:
+                x = tag_applier(func)(*args, **kwargs)
+            else:
                 x = func(*args, **kwargs)
-                TIME_COUNTER = TIME_COUNTER.pop()
-                return x
-            return wrapper
+            TIME_COUNTER = TIME_COUNTER.pop()
+            return x
+        return wrapper
     return count_runtime
 
 def test_runtimes(func, gen):
@@ -230,7 +256,6 @@ def test_runtimes(func, gen):
         TIME_COUNTER = RuntimeTree()
         func(get_random_input(gen, size))
         #TODO make this not break if the input isn't one of the default runtimes
-        #print(TIME_COUNTER.get_t_runtime())
         r_time = cleanup(TIME_COUNTER.get_t_runtime())
         f = default_runtimes[r_time]
         outcomes.append(TIME_COUNTER.get_a_runtime() / f(size))
@@ -238,62 +263,3 @@ def test_runtimes(func, gen):
     print(cleanup(TIME_COUNTER.get_t_runtime()))
     print(outcomes)
 
-# here are some functions for testing it out
-#-----------------------------------------------------------------------------------------------------------------
-@runtime("n", inputs="ALL")
-def merge(left, right):
-    result = []
-    while (not left == []) and (not right == []):
-        if left[0] <= right[0]:
-            result.append(left.pop(0))
-        else:
-            result.append(right.pop(0))
-    # one of these must be empty so it's safe to add
-    return result + left + right
-
-@runtime(recursive=True)
-def merge_sort(arr):
-    if len(arr) == 1:
-        return arr
-    mid = len(arr)//2
-    left = arr[:mid]
-    right = arr[mid:]
-    left = merge_sort(left)
-    right = merge_sort(right)
-    return merge(left, right)
-
-@runtime(recursive=True)
-def binary_search(arr, k):
-    i = len(arr) // 2
-    if len(arr) == 0:
-        return False
-    elif len(arr) == 1:
-        return arr[0] == k
-    if arr[i] < k:
-        return binary_search(arr[i+1:], k)
-    elif arr[i] == k:
-        return True
-    else:
-        return binary_search(arr[i + 1:], k)
-
-@runtime(recursive=True)
-def lazy_search(arr, k):
-    if len(arr) == 0:
-        return False
-    else:
-        return arr[0] == k or lazy_search(arr[1:], k)
-
-@runtime
-def loop(arr):
-    tot = 0
-    for x in range(len(arr)):
-        tot+=arr[x]
-    return tot
-
-#this makes loops be counted as n
-dec = runtime("n",inputs=(0,),recursive=False)
-__builtins__.range = dec(range)
-
-#x = iter(range(1,100))
-gen = lambda : random.randint(1,100)
-test_runtimes(loop, gen)
