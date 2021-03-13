@@ -5,15 +5,14 @@ import random
 
 
 #TODO
-# 1) use runtimes from children(not the recursive ones) when calculating recursive runtime
-# 2) Build testing aparatus (compare a_runtime to t_runtime)
 # 3) Allow for more complicated runtimes
 # 4) Smarter output calculation(n(n) -> n^2)
 # 5) Make defaults more general (x^n instead of 2^n and 3^n only)
-# 6) Make the output prettier
-# 7) Make how the input size is selected smarter
-
-
+# 6) Make smart parser for runtimes
+# 7) Make the random input generator smarter
+# 8) Add runtimes to builtin functions
+# 9) Track what transformations have been applied to the input to figure out when something of size O(n) is being used
+# 10) Add some fancy number crunchers once 9 is done (1 + 1/2 + 1/4 + ... =2) for example
 
 
 #defaults to try for suggesting alternatives
@@ -21,28 +20,49 @@ import random
 default_runtimes = {
                         "1":lambda x: 1,
                        "log(n)": log2,
-                       "sqrt(n)":lambda x:x**(1/2),
-                       "nlog(n)": lambda x:x*log2(x),
+                       "sqrt(n)":lambda x: x**(1/2),
+                       "n(log(n))": lambda x: x*log2(x),
                         "n": lambda x:x,
                        "n^2": lambda x:x**2,
                        "2^n": lambda x: 2**x,
                        "3^n": lambda x: 3**x
 }
 
+
+def parse_runtime(r_str):
+    pass
+
 #take in a function that generates inputs and create an input for testing
 def get_random_input(generator,size):
     return [generator() for x in range(size)]
 
+def cleanup(formula):
+    #replace x^0 with 1
+    x=re.sub("n\^0","1",formula)
+    x = re.sub("(log(n))\^0","1",x)
+    # replace x^1 with x
+    x = re.sub("[+\^]+1", "", x)
+    #get rid of any 1's
+    x = re.sub("1", "", x)
+    #remove any brackets on the outside
+    while len(x) > 0 and x[0] == "(":
+        x = re.sub("^\(", "", x)
+        x = re.sub("\)$", "", x)
+    return x if x else "1"
 
 #master theorem for recursion
 def master_theorem(a,b,c=0,k=0):
+    #print(a, b, c, k)
     c_crit = log(a, b)
+    if int(c_crit) == c_crit:
+        c_crit = int(c_crit)
+
     if c < c_crit:
         return "n^" + str(c_crit)
     elif c==c_crit:
-        return "n^" + str(c_crit) + "(log(n))" + str(k+1)
+        return "n^" + str(c_crit) + "(log(n))^" + str(k+1)
     elif c > c_crit:
-        output =  "n^" + str(c)
+        output = "n^" + str(c)
         if k > 0:
             output+= "(log(n))^" + str(k)
         return output
@@ -76,45 +96,62 @@ class RuntimeTree:
         :return:
         '''
 
+    def get_shrinkage(self):
+        recursed_childs = list(filter(lambda x: x.f_name == self.f_name, self.children))
+        if len(recursed_childs) > 0:
+            return self.a_value - recursed_childs[0].a_value
+        else:
+            #default to true for tiny inputs
+            return self.parent.a_value - self.a_value
+
     #calculates the theoretical runtime
     def get_t_runtime(self):
         #handle the recursive part
         if self.recursive:
             recursed_childs = list(filter(lambda x: x.f_name == self.f_name, self.children))
             other_childs = list(filter(lambda x: not x.f_name == self.f_name, self.children))
-            #TODO make this a function and less jank
             tester = lambda x: default_runtimes[x.t_value](20)
             #uses the largest runtime between this and the children as the per level runtime
-            total_t = max(other_childs, key=tester)
-            total_t = max(total_t, self, key=tester).t_value
+            if len(other_childs) > 0:
+                total_t = max(other_childs, key=tester)
+                total_t = max(total_t, self, key=tester).t_value
+            else:
+                total_t = self.t_value
             #no splitting
             if len(recursed_childs) == 1:
-                a = self.get_max_depth()
-                if recursed_childs[0].a_value == self.a_value - 1:
-                    #TODO this might be incorrect now
+                #check if the decrease is linear
+                #TODO make it so that this works for trees as well a.k.a shrinkage uses tree size etc
+                if self.get_shrinkage() == recursed_childs[0].get_shrinkage:
                     return "n(" + total_t + ")"
                 else:
+                    #TODO make this better than just assuming (log(n))
                     return total_t + "(log(n))"
             else:
                 a = len(recursed_childs)
                 b = self._get_max_child_ratio()
-                k = re.search("log\(n\)\^[1-9],", total_t)
+                k = re.search("log\(n\)\^[1-9]", total_t)
                 if k is None:
                     k=0
                 else:
                     k=int(k.string[-1])
-                c = re.search("n\^[1-9]", total_t)
-                c_2 = re.search("sqrt\(n\)", total_t)
-                if c is None:
-                    if c_2 is not None:
-                        c=1/2
-                    else:
+                #Remove any logs from the string
+                total_t = re.sub("log\(n\)\^[1-9]","",total_t)
+                c_str = re.search("sqrt\(n\)", total_t)
+                total_t = re.sub("sqrt\(n\)", "", total_t)
+                if c_str is None:
+                    c_str = re.search("n\^[1-9]", total_t) or re.search("n", total_t)
+                    if c_str is None:
                         c=0
+                    elif c_str.string == "n":
+                        c=1
+                    else:
+                        #TODO make this less jank
+                        c=int(c_str.string[-1])
                 else:
-                    c=int(c.string[-1])
+                    c = 1/2
                 return master_theorem(a, b, c, k)
         else:
-            if(len(self.children) > 0):
+            if len(self.children) > 0:
                 return self.t_value + "(" + "+".join(map(RuntimeTree.get_t_runtime, self.children)) + ")"
             else:
                 return self.t_value
@@ -127,11 +164,12 @@ class RuntimeTree:
             return default_runtimes[self.t_value](self.a_value)
 
     def _get_max_child_ratio(self):
-        ratio = lambda x: self.a_value / x.a_value
+        #TODO make sure it's okay to round down here
+        ratio = lambda x: self.a_value // x.a_value
         if len(self.children) == 0:
             return 1
         else:
-            return max(map(ratio,self.children))
+            return max(map(ratio, self.children))
 
     def get_max_depth(self,depth=0):
         m_depth = 0
@@ -156,51 +194,64 @@ class RuntimeTree:
 
 TIME_COUNTER = RuntimeTree()
 
-def runtime(expected,recursive=False):
+def runtime(expected="1",recursive=False,inputs=None):
     def count_runtime(func):
             def wrapper(*args,**kwargs):
                 #adds in the gubbins to the tree
                 global TIME_COUNTER
-                input_value = args[0]
-                TIME_COUNTER = TIME_COUNTER.push(expected,input_value,func.__name__,recursive)
-                x = func(*args,**kwargs)
+                #just add up all the inputs
+                if inputs == "ALL":
+                    input_value = args[0]
+                    for x in args[1:]:
+                        input_value += x
+                #a list of values to use was supplied
+                elif hasattr(inputs, "__iter__"):
+                    input_value = args[inputs[0]]
+                    for index in inputs[1:]:
+                        input_value += args[index]
+                #a function was supplied
+                elif callable(inputs):
+                    input_value = inputs(*args)
+                else:
+                    input_value = args[0]
+                TIME_COUNTER = TIME_COUNTER.push(expected, input_value, func.__name__, recursive)
+                x = func(*args, **kwargs)
                 TIME_COUNTER = TIME_COUNTER.pop()
                 return x
             return wrapper
     return count_runtime
 
-#TODO setup tests to compare predicted runtime to actual runtime
-def test_runtime(sizes,func):
-    expected = map(f,sizes)
-    return list(expected)
-
-def test_runtimes(func,gen):
-    sizes=[5,10,20]
+def test_runtimes(func, gen):
+    sizes = [5, 10, 15, 20]
     global TIME_COUNTER
     outcomes = []
     #store the differences for all the tests
     for size in sizes:
-        TIME_COUNTER=RuntimeTree()
-        func(get_random_input(gen,size))
-        outcomes.append(TIME_COUNTER.get_a_runtime() / size)
-        #TODO compare the outcomes to the result of interpreting the theoretical value
+        TIME_COUNTER = RuntimeTree()
+        func(get_random_input(gen, size))
+        #TODO make this not break if the input isn't one of the default runtimes
+        #print(TIME_COUNTER.get_t_runtime())
+        r_time = cleanup(TIME_COUNTER.get_t_runtime())
+        f = default_runtimes[r_time]
+        outcomes.append(TIME_COUNTER.get_a_runtime() / f(size))
+    #TODO
+    print(cleanup(TIME_COUNTER.get_t_runtime()))
     print(outcomes)
 
-
-
-
-@runtime("n")
+# here are some functions for testing it out
+#-----------------------------------------------------------------------------------------------------------------
+@runtime("n", inputs="ALL")
 def merge(left, right):
-    result=[]
-    while not left == [] and not right == []:
-        if left[0] < right[0]:
+    result = []
+    while (not left == []) and (not right == []):
+        if left[0] <= right[0]:
             result.append(left.pop(0))
         else:
             result.append(right.pop(0))
     # one of these must be empty so it's safe to add
     return result + left + right
 
-@runtime("1",recursive=True)
+@runtime(recursive=True)
 def merge_sort(arr):
     if len(arr) == 1:
         return arr
@@ -211,6 +262,38 @@ def merge_sort(arr):
     right = merge_sort(right)
     return merge(left, right)
 
+@runtime(recursive=True)
+def binary_search(arr, k):
+    i = len(arr) // 2
+    if len(arr) == 0:
+        return False
+    elif len(arr) == 1:
+        return arr[0] == k
+    if arr[i] < k:
+        return binary_search(arr[i+1:], k)
+    elif arr[i] == k:
+        return True
+    else:
+        return binary_search(arr[i + 1:], k)
 
-gen = lambda : random.randint(1, 100)
-test_runtimes(merge_sort,gen)
+@runtime(recursive=True)
+def lazy_search(arr, k):
+    if len(arr) == 0:
+        return False
+    else:
+        return arr[0] == k or lazy_search(arr[1:], k)
+
+@runtime
+def loop(arr):
+    tot = 0
+    for x in range(len(arr)):
+        tot+=arr[x]
+    return tot
+
+#this makes loops be counted as n
+dec = runtime("n",inputs=(0,),recursive=False)
+__builtins__.range = dec(range)
+
+#x = iter(range(1,100))
+gen = lambda : random.randint(1,100)
+test_runtimes(loop, gen)
