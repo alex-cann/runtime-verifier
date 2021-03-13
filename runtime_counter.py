@@ -6,10 +6,9 @@ from tracking import *
 
 
 #TODO
-# 3) Allow for more complicated runtimes
 # 4) Smarter output calculation(n(n) -> n^2) (Done except for cleaner)
 # 7) Make the random input generator smarter
-# 8) Add runtimes to builtin functions
+# 8) Add runtimes to builtin functions (just need to do the rest by hand now)
 # 9) Track what transformations have been applied to the input to figure out when something of size O(n) is being used
 # 10) Add some fancy number crunchers once 9 is done (1 + 1/2 + 1/4 + ... =2) for example
 # 11) Fix bug where if params are not passed it loses it's mind
@@ -18,16 +17,15 @@ from tracking import *
 #leaf equations
 #x is to be left until the very end
 base_equations = {
-    "([0-9])": lambda x,y: int(y),
+    "([0-9]+)": lambda x,y: int(y),
     "n": lambda x: x,
 }
 #binary/unary functions
 r_time_functions = {
-                       "log\((.+)\)": lambda x,y :log2(y(x)),
+                       "log\((.+)\)": lambda x,y : log2(y(x)),
                        "sqrt\((.+)\)": lambda x,y: y(x) ** (1/2),
                        "([^tg(]+)\((.+)\)": lambda x,y,z: y(x) * z(x),
-                       "([0-9]*)\^n": lambda x,y: y(x)**x,
-                       "([^0-9]+)\^([0-9])": lambda x,y,z: z(x)**y(x),
+                       "(.+)\^(.+)": lambda x,y,z: y(x) ** z(x),
                        "(.+)\+(.+)": lambda x,y,z: y(x) + z(x)
 }
 
@@ -53,13 +51,10 @@ def parse_runtime(r_str):
         if not test:
             continue
         arg_count = func.__code__.co_argcount
-        if arg_count > 1:
-            #on the other hand these are all going to be functions
-            args = list(map(parse_runtime, test.group(*list(range(1, arg_count)))))
-            return lambda x: func(x, *args)
-        else:
-            return lambda x: func(x)
-    print(r_str)
+        #on the other hand these are all going to be functions
+        args = list(map(parse_runtime, test.group(*list(range(1, arg_count)))))
+        return lambda x: func(x, *args)
+
 
 #take in a function that generates inputs and create an input for testing
 def get_random_input(generator,size):
@@ -283,10 +278,12 @@ def test_runtimes(func, gen):
     outcomes = []
     #store the differences for all the tests
     for size in sizes:
+        print("--------SIZE " + str(size) + "--------")
         TIME_COUNTER = RuntimeTree()
         func(get_random_input(gen, size))
         #TODO make this not break if the input isn't one of the default runtimes
         r_time = cleanup(TIME_COUNTER.get_t_runtime())
+        print(r_time, TIME_COUNTER.get_t_runtime())
         f = parse_runtime(TIME_COUNTER.get_t_runtime())
         outcomes.append(TIME_COUNTER.get_a_runtime() / f(size))
     #TODO
