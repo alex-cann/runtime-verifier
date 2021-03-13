@@ -10,7 +10,8 @@ class MyTestCase(unittest.TestCase):
     def test_basic_tracking(self):
         print("testing loop")
         test_runtimes(loop, lambda : random.randint(1, 100))
-
+    def test_negative_tracking(self):
+        test_runtimes(o1_loop, lambda: random.randint(1, 100))
 @runtime("n", inputs="ALL")
 def merge(left, right):
     result = []
@@ -60,6 +61,13 @@ def loop(arr):
     tot = 0
     for x in range(len(arr)):
         tot += arr[x]
+    return tot
+
+@runtime()
+def o1_loop(arr):
+    tot=0
+    for x in range(5):
+        tot+=x
     return tot
 
 #def len(*args):
