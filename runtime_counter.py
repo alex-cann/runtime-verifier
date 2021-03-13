@@ -287,7 +287,7 @@ def test_runtimes(func, gen):
         f = parse_runtime(TIME_COUNTER.get_t_runtime())
         outcomes.append(TIME_COUNTER.get_a_runtime() / f(size))
         #TODO compare the actual runtime to the one received from counting values
-        
+
     #TODO graphs or something
     print("labeled runtime: O(" + cleanup(TIME_COUNTER.get_t_runtime()) + ")")
     print("Ratios: " +str(outcomes))
