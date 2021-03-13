@@ -273,20 +273,22 @@ def runtime(expected="1", recursive=False, inputs=None, leaf=False):
     return count_runtime
 
 def test_runtimes(func, gen):
-    sizes = [5, 10, 15, 20]
+    sizes = [5, 10, 15, 200]
     global TIME_COUNTER
     outcomes = []
     #store the differences for all the tests
     for size in sizes:
-        print("--------SIZE " + str(size) + "--------")
+        #Disabled because it's pretty clean as is
+        #print("--------SIZE " + str(size) + "--------")
         TIME_COUNTER = RuntimeTree()
         func(get_random_input(gen, size))
         #TODO make this not break if the input isn't one of the default runtimes
         r_time = cleanup(TIME_COUNTER.get_t_runtime())
-        print(r_time, TIME_COUNTER.get_t_runtime())
         f = parse_runtime(TIME_COUNTER.get_t_runtime())
         outcomes.append(TIME_COUNTER.get_a_runtime() / f(size))
-    #TODO
-    print(cleanup(TIME_COUNTER.get_t_runtime()))
-    print(outcomes)
+        #TODO compare the actual runtime to the one received from counting values
+        
+    #TODO graphs or something
+    print("labeled runtime: O(" + cleanup(TIME_COUNTER.get_t_runtime()) + ")")
+    print("Ratios: " +str(outcomes))
 
