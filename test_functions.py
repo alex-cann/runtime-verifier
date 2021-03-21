@@ -1,6 +1,8 @@
 import unittest
 from runtime_counter import *
 from decorate_builtins import *
+
+
 class MyTestCase(unittest.TestCase):
 
     def test_merge_sort(self):
@@ -12,6 +14,8 @@ class MyTestCase(unittest.TestCase):
         test_runtimes(loop, lambda : random.randint(1, 100))
     def test_negative_tracking(self):
         test_runtimes(o1_loop, lambda: random.randint(1, 100))
+
+
 @runtime("n", inputs="ALL")
 def merge(left, right):
     result = []
@@ -23,6 +27,7 @@ def merge(left, right):
     # one of these must be empty so it's safe to add
     return result + left + right
 
+
 @runtime(recursive=True)
 def merge_sort(arr):
     if len(arr) == 1:
@@ -33,6 +38,7 @@ def merge_sort(arr):
     left = merge_sort(left)
     right = merge_sort(right)
     return merge(left, right)
+
 
 @runtime(recursive=True)
 def binary_search(arr, k):
@@ -47,6 +53,7 @@ def binary_search(arr, k):
         return True
     else:
         return binary_search(arr[i + 1:], k)
+
 
 @runtime(recursive=True)
 def lazy_search(arr, k):

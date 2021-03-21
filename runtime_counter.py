@@ -93,6 +93,7 @@ def master_theorem(a,b,c=0,k=0):
             output+= "(log(n)^" + str(k) + ")"
         return output
 
+
 def a_master_theorem(n,a,b,c=0,k=0):
     c_crit = log(a, b)
     if c < c_crit:
@@ -105,7 +106,7 @@ def a_master_theorem(n,a,b,c=0,k=0):
 
 class RuntimeTree:
 
-    def __init__(self, children = None, t_value = "1", a_value = 1, parent=None,f_name = "root", recursive=False):
+    def __init__(self, children=None, t_value="1", a_value=1, parent=None,f_name="root", recursive=False):
         if children is None:
             self.children = []
         else:
@@ -148,7 +149,7 @@ class RuntimeTree:
             if len(recursed_childs) == 1:
                 #check if the decrease is linear
                 #TODO make it so that this works for trees as well a.k.a shrinkage uses tree size etc
-                if self.get_shrinkage() == recursed_childs[0].get_shrinkage:
+                if self.get_shrinkage() == recursed_childs[0].get_shrinkage():
                     return "n(" + total_t + ")"
                 else:
                     #TODO make this better than just assuming (log(n))
@@ -271,6 +272,7 @@ def runtime(expected="1", recursive=False, inputs=None, leaf=False):
             return x
         return wrapper
     return count_runtime
+
 
 def test_runtimes(func, gen):
     sizes = [5, 10, 15, 200]
